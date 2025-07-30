@@ -15,6 +15,10 @@
       document.getElementById("messages").appendChild(li);
     };
 
+    ws.onerror = (event) => {
+      console.error("WebSocket error observed:", event);
+    };
+
     document.getElementById("input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         ws.send(JSON.stringify({ content: e.target.value }));
