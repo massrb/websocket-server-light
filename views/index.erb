@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head><title>Sinatra WebSocket</title></head>
+<body>
+  <ul id="messages"></ul>
+  <input id="input" placeholder="Type message..." autofocus>
+
+  <script>
+    const ws = new WebSocket("ws://" + location.host + "/websocket");
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const li = document.createElement("li");
+      li.textContent = data.content;
+      document.getElementById("messages").appendChild(li);
+    };
+
+    document.getElementById("input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        ws.send(JSON.stringify({ content: e.target.value }));
+        e.target.value = "";
+      }
+    });
+  </script>
+</body>
+</html>
