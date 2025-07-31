@@ -1,56 +1,52 @@
-require 'sinatra/base'
-require 'sinatra/activerecord'
+# app.rb
+require 'sinatra'
 require 'faye/websocket'
 require 'json'
 
-class App < Sinatra::Base
-  set :database, { adapter: 'sqlite3', database: 'db/development.sqlite3' }
-  
-  @connections = []
+Faye::WebSocket.load_adapter('thin')
 
-  def self.connections
-    @connections
-  end
+KEEPALIVE_TIME = 15
+CLIENTS = []
 
-  get '/' do
-    erb :index
+class WebSocketBackend
+  def initialize(app)
+    @app = app
   end
 
   def call(env)
     if Faye::WebSocket.websocket?(env) && env['PATH_INFO'] == '/websocket'
-      puts "Incoming request: #{env['REQUEST_METHOD']} #{env['PATH_INFO']}"
-      ws = Faye::WebSocket.new(env, nil, ping: 15)
+      ws = Faye::WebSocket.new(env, nil, { ping: KEEPALIVE_TIME })
 
-      ws.on :open do |_|
-        self.class.connections << ws
-        puts "WebSocket opened"
+      ws.on :open do |event|
+        CLIENTS << ws
+        puts "[WS OPEN] Total: #{CLIENTS.count}"
       end
 
       ws.on :message do |event|
+        puts "[WS MSG] #{event.data}"
         begin
           data = JSON.parse(event.data)
-          msg = Message.create(content: data['content'])
-          self.class.connections.each do |conn|
-            conn.send({ id: msg.id, content: msg.content }.to_json)
-          end
+          CLIENTS.each { |client| client.send({ content: data["content"] }.to_json) }
         rescue => e
-          puts "Error in message handler: #{e.message}"
+          puts "[WS ERROR] #{e.message}"
         end
       end
 
       ws.on :close do |event|
-        self.class.connections.delete(ws)
-        puts "WebSocket closed, code=#{event.code}, reason=#{event.reason}"
+        CLIENTS.delete(ws)
+        puts "[WS CLOSE] Code: #{event.code}, Reason: #{event.reason}"
         ws = nil
-      end
-
-      ws.on :error do |event|
-        puts "WebSocket error: #{event.message}"
       end
 
       return ws.rack_response
     else
-      super(env)
+      @app.call(env)
     end
   end
+end
+
+use WebSocketBackend
+
+get '/' do
+  erb :index
 end
